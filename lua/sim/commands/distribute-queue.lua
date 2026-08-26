@@ -232,6 +232,11 @@ DistributeOrders = function(units, target, clearCommands, doPrint)
         local batchOrders = commandInfo.BatchOrders
         local fullRedundancy = commandInfo.FullRedundancy
 
+        LOG(string.format(
+            "DistributeOrders: type=%s units=%d orders=%d batchOrders=%s fullRedundancy=%s",
+            tostring(commandType), unitCount, orderCount, tostring(batchOrders), tostring(fullRedundancy)
+        ))
+
         if issueOrder then
 
             -- special snowflake implementation for the mobile build order. There's
@@ -321,10 +326,41 @@ DistributeOrders = function(units, target, clearCommands, doPrint)
                             direction = -1
                         end
 
+                        local unitBatch = PopulateBatch(start, batch - 1, units, dummyBatchTable)
+
+                        -- Start each batch with the order nearest to it. This keeps the
+                        -- redundant order rotation, but makes the first assignment depend
+                        -- on proximity instead of the order in which commands were queued.
+                        local bx = 0
+                        local bz = 0
+                        for _, unit in unitBatch do
+                            local ux, _, uz = unit:GetPositionXYZ()
+                            bx = bx + ux
+                            bz = bz + uz
+                        end
+                        bx = bx / batch
+                        bz = bz / batch
+
+                        local nearestOrderIndex = 1
+                        local nearestOrderDistance = nil
+                        for index, order in group do
+                            local dx = order.x - bx
+                            local dz = order.z - bz
+                            local distance = dx * dx + dz * dz
+                            if (not nearestOrderDistance) or (distance < nearestOrderDistance) then
+                                nearestOrderIndex = index
+                                nearestOrderDistance = distance
+                            end
+                        end
+
+                        LOG(string.format(
+                            "DistributeOrders: fullRedundancy batch=%d size=%d nearestOrder=%d distance=%.2f",
+                            k, batch, nearestOrderIndex, nearestOrderDistance or -1
+                        ))
+
                         for o = 1, redundancy do
-                            local index = MathMod((direction * (o - 1) + k) + orderCount, orderCount) + 1
+                            local index = MathMod(direction * (o - 1) + nearestOrderIndex - 1 + orderCount, orderCount) + 1
                             local order = group[index]
-                            local unitBatch = PopulateBatch(start, batch - 1, units, dummyBatchTable)
                             local targetOrEntity = order.target or PopulateLocation(order, dummyVectorTable)
                             if issueOrder(unitBatch, targetOrEntity) then
                                 distributedOrders = distributedOrders + 1
@@ -334,7 +370,39 @@ DistributeOrders = function(units, target, clearCommands, doPrint)
                         start = start + batch
                     end
                 else
-                    if orderCount >= unitCount then
+                    if orderCount == unitCount then
+
+                        -- Match each unit to its nearest order that has not already
+                        -- been assigned. This is a cheap proximity-based improvement
+                        -- for the common one-unit-per-order case.
+                        local assignedOrders = {}
+                        for _, unit in units do
+                            local ux, _, uz = unit:GetPositionXYZ()
+                            local nearestOrderIndex = nil
+                            local nearestOrderDistance = nil
+
+                            for index, order in group do
+                                if assignedOrders[index] then
+                                    continue
+                                end
+
+                                local dx = order.x - ux
+                                local dz = order.z - uz
+                                local distance = dx * dx + dz * dz
+                                if (not nearestOrderDistance) or (distance < nearestOrderDistance) then
+                                    nearestOrderIndex = index
+                                    nearestOrderDistance = distance
+                                end
+                            end
+
+                            assignedOrders[nearestOrderIndex] = true
+                            local order = group[nearestOrderIndex]
+                            dummyUnitTable[1] = unit
+                            if issueOrder(dummyUnitTable, order.target or PopulateLocation(order, dummyVectorTable)) then
+                                distributedOrders = distributedOrders + 1
+                            end
+                        end
+                    elseif orderCount > unitCount then
 
                         -- strange situation where we have more orders than units
 
@@ -352,14 +420,39 @@ DistributeOrders = function(units, target, clearCommands, doPrint)
                         end
                     else
 
-                        -- usual situation where we have equal or more orders than units
+                        -- Spread the units evenly over the orders, assigning each unit
+                        -- to its nearest order that still has room in its batch.
+                        local capacities = ComputeBatchCounts(unitCount, orderCount, dummyBatches)
+                        local unitBatches = {}
+                        for index = 1, orderCount do
+                            unitBatches[index] = {}
+                        end
 
-                        local start = 1
-                        local batches = ComputeBatchCounts(unitCount, orderCount, dummyBatches)
-                        for k, batch in batches do
-                            local order = group[k]
-                            local unitBatch = PopulateBatch(start, batch - 1, units, dummyBatchTable)
-                            start = start + batch
+                        for _, unit in units do
+                            local ux, _, uz = unit:GetPositionXYZ()
+                            local nearestOrderIndex = nil
+                            local nearestOrderDistance = nil
+
+                            for index, order in group do
+                                if capacities[index] < 1 then
+                                    continue
+                                end
+
+                                local dx = order.x - ux
+                                local dz = order.z - uz
+                                local distance = dx * dx + dz * dz
+                                if (not nearestOrderDistance) or (distance < nearestOrderDistance) then
+                                    nearestOrderIndex = index
+                                    nearestOrderDistance = distance
+                                end
+                            end
+
+                            capacities[nearestOrderIndex] = capacities[nearestOrderIndex] - 1
+                            TableInsert(unitBatches[nearestOrderIndex], unit)
+                        end
+
+                        for index, order in group do
+                            local unitBatch = unitBatches[index]
                             if issueOrder(unitBatch, order.target or PopulateLocation(order, dummyVectorTable)) then
                                 distributedOrders = distributedOrders + 1
                             end
