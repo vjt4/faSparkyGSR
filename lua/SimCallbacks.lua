@@ -841,6 +841,40 @@ do
             "miliseconds")
     end
 
+    ---@param data { Destination: Vector }
+    ---@param selection Unit[]
+    Callbacks.ExtendAssistOrder = function(data, selection)
+        selection = SecureUnits(selection)
+        if (not selection) or TableEmpty(selection) then
+            return
+        end
+
+        -- The regular assist order provides a trusted start point and proves that
+        -- the selected units can assist the target. The callback only extends it.
+        local queue = selection[1]:GetCommandQueue()
+        local lastCommand = queue[table.getn(queue)]
+        if not (lastCommand and lastCommand.target) then
+            return
+        end
+
+        local commandType = lastCommand.commandType
+        if commandType ~= 9 and commandType ~= 15 and commandType ~= 29 then
+            return
+        end
+
+        local target = lastCommand.target --[[@as Unit]]
+        local commandArmy = GetCurrentCommandSourceArmy()
+        if IsDestroyed(target) or not IsAlly(commandArmy, target.Army) then
+            return
+        end
+
+        local ps = target:GetPosition()
+        local pe = data.Destination
+        import("/lua/sim/commands/area-assist-order.lua").AreaAssistUnits(
+            selection, ps, pe, Width, true, target.EntityId
+        )
+    end
+
     ---@param data table
     ---@param selection Unit[]
     Callbacks.ExtendAttackOrder = function(data, selection)

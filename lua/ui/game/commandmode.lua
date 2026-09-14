@@ -563,6 +563,11 @@ local function OnGuardIssued(command)
             local units = command.Units --[[@as (UserUnit[])]]
             import("/lua/ui/game/hotkeys/capping.lua").AssistToCap(target, units)
         end
+
+        -- Area assist dragger, command mode only
+        if modeData.name == "RULEUCC_Guard" then
+            import("/lua/ui/game/hotkeys/area-assist-order.lua").AreaAssistOrder(command)
+        end
     end
 end
 
