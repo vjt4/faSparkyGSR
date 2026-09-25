@@ -132,3 +132,76 @@ function IsTwoTeamSetupSupported(teams)
 
     return true, nil, teamSize
 end
+
+---Enumerates every possible host-team composition exactly once.
+---Each composition contains indices into `players`, with the host index first.
+---The callback must not mutate the supplied player list.
+---@param players OptimalAvoidPlayer[]
+---@param teamSize number
+---@param callback fun(hostTeam: number[])
+---@return number? combinationCount
+---@return string? errorReason
+function EnumerateHostTeams(players, teamSize, callback)
+    if type(callback) ~= 'function' then
+        return nil, 'callback-required'
+    end
+
+    local playerCount = table.getn(players)
+    if type(teamSize) ~= 'number' or teamSize < 1 or teamSize > playerCount or teamSize ~= math.floor(teamSize) then
+        return nil, 'invalid-team-size'
+    end
+
+    local hostIndex
+    for index = 1, playerCount do
+        local player = players[index]
+        if player.isHost then
+            if hostIndex then
+                return nil, 'multiple-hosts'
+            end
+            hostIndex = index
+        end
+    end
+
+    if not hostIndex then
+        return nil, 'host-not-found'
+    end
+
+    local candidates = {}
+    for index = 1, playerCount do
+        if index ~= hostIndex then
+            table.insert(candidates, index)
+        end
+    end
+
+    local selected = { hostIndex }
+    local combinationCount = 0
+    local teammatesNeeded = teamSize - 1
+
+    local function emitCombination()
+        local hostTeam = {}
+        for index = 1, table.getn(selected) do
+            hostTeam[index] = selected[index]
+        end
+
+        callback(hostTeam)
+        combinationCount = combinationCount + 1
+    end
+
+    local function choose(candidateStart, remaining)
+        if remaining == 0 then
+            emitCombination()
+            return
+        end
+
+        local lastCandidate = table.getn(candidates) - remaining + 1
+        for candidateIndex = candidateStart, lastCandidate do
+            table.insert(selected, candidates[candidateIndex])
+            choose(candidateIndex + 1, remaining - 1)
+            table.remove(selected)
+        end
+    end
+
+    choose(1, teammatesNeeded)
+
+    return combinationCount, nil
+end

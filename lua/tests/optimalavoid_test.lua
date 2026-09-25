@@ -1,3 +1,5 @@
+string.match = string.match or string.find
+
 require '../tests/testutils.lua'
 require '../ui/lobby/optimalavoid.lua'
 
@@ -101,6 +103,102 @@ function test_unsupported_team_setups()
     })
     expect_equal(supported, false)
     expect_equal(reason, 'requires-two-teams')
+end
+
+local function MakePlayers(playerCount, hostIndex)
+    local players = {}
+    for index = 1, playerCount do
+        table.insert(players, {
+            position = index,
+            isHost = index == hostIndex,
+            isAvoided = false,
+        })
+    end
+
+    return players
+end
+
+function test_enumerate_host_team_combination_counts()
+    local cases = {
+        { players = 2, teamSize = 1, combinations = 1 },
+        { players = 4, teamSize = 2, combinations = 3 },
+        { players = 6, teamSize = 3, combinations = 10 },
+        { players = 8, teamSize = 4, combinations = 35 },
+        { players = 10, teamSize = 5, combinations = 126 },
+        { players = 12, teamSize = 6, combinations = 462 },
+        { players = 14, teamSize = 7, combinations = 1716 },
+        { players = 16, teamSize = 8, combinations = 6435 },
+    }
+
+    for _, case in pairs(cases) do
+        local callbackCount = 0
+        local combinationCount, reason = EnumerateHostTeams(
+            MakePlayers(case.players, case.players),
+            case.teamSize,
+            function()
+                callbackCount = callbackCount + 1
+            end
+        )
+
+        expect_equal(combinationCount, case.combinations)
+        expect_equal(callbackCount, case.combinations)
+        expect_equal(reason, nil)
+    end
+end
+
+function test_enumerate_host_teams_are_unique_and_complete()
+    local players = MakePlayers(8, 5)
+    local seen = {}
+    local playerOccurrences = {}
+    local hostOccurrences = 0
+
+    local combinationCount, reason = EnumerateHostTeams(players, 4, function(hostTeam)
+        expect_equal(table.getn(hostTeam), 4)
+        expect_equal(hostTeam[1], 5)
+
+        local identity = {}
+        for _, playerIndex in pairs(hostTeam) do
+            table.insert(identity, playerIndex)
+            playerOccurrences[playerIndex] = (playerOccurrences[playerIndex] or 0) + 1
+            if playerIndex == 5 then
+                hostOccurrences = hostOccurrences + 1
+            end
+        end
+        table.sort(identity)
+
+        local key = table.concat(identity, ',')
+        expect_equal(seen[key], nil)
+        seen[key] = true
+    end)
+
+    expect_equal(combinationCount, 35)
+    expect_equal(reason, nil)
+    expect_equal(hostOccurrences, 35)
+    for playerIndex = 1, 8 do
+        if playerIndex ~= 5 then
+            expect_equal(playerOccurrences[playerIndex], 15)
+        end
+    end
+end
+
+function test_enumerate_host_teams_validates_input()
+    local count, reason = EnumerateHostTeams(MakePlayers(4, 1), 0, function() end)
+    expect_equal(count, nil)
+    expect_equal(reason, 'invalid-team-size')
+
+    count, reason = EnumerateHostTeams(MakePlayers(4, 1), 2, nil)
+    expect_equal(count, nil)
+    expect_equal(reason, 'callback-required')
+
+    count, reason = EnumerateHostTeams(MakePlayers(4, 5), 2, function() end)
+    expect_equal(count, nil)
+    expect_equal(reason, 'host-not-found')
+
+    local players = MakePlayers(4, 1)
+    players[2].isHost = true
+    count, reason = EnumerateHostTeams(players, 2, function() end)
+    expect_equal(count, nil)
+    expect_equal(reason, 'multiple-hosts')
 end
 
 auto_run_unit_tests()
