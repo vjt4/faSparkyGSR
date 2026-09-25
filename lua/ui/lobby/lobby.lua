@@ -649,7 +649,18 @@ local function DoSlotBehavior(slot, key, name)
             GUI.chatEdit:SetText(string.format("/whisper %s ", gameInfo.PlayerOptions[slot].PlayerName))
         end
     elseif key == 'avoid_as_teammate' then
-        -- Placeholder for the host's local avoid-list behavior.
+        local playerInfo = gameInfo.PlayerOptions[slot]
+        if lobbyComm:IsHost() and playerInfo.Human then
+            local avoidedPlayers = Prefs.GetFromCurrentProfile('avoidedplayers')
+            if type(avoidedPlayers) ~= 'table' then
+                avoidedPlayers = {}
+            end
+
+            if not table.find(avoidedPlayers, playerInfo.PlayerName) then
+                table.insert(avoidedPlayers, playerInfo.PlayerName)
+                Prefs.SetToCurrentProfile('avoidedplayers', avoidedPlayers)
+            end
+        end
         return
     -- Handle the various "Move to slot X" options.
     elseif string.sub(key, 1, 19) == 'move_player_to_slot' then
