@@ -316,6 +316,7 @@ local slotMenuStrings = {
     closed = "<LOC lobui_0221>Closed",
     occupy = "<LOC lobui_0222>Occupy",
     pm = "<LOC lobui_0223>Private Message",
+    avoid_as_teammate = "Avoid as teammate",
     remove_to_kik = "<LOC lobui_0428>Kick Player",
     remove_to_observer = "<LOC lobui_0429>Move Player to Observer",
     close_spawn_mex = "<LOC lobui_0431>Close - spawn mex",
@@ -342,6 +343,7 @@ local slotMenuData = {
     player = {
         host = {
             'pm',
+            'avoid_as_teammate',
             'remove_to_observer',
             'remove_to_kik',
             'move'
@@ -646,6 +648,9 @@ local function DoSlotBehavior(slot, key, name)
         if gameInfo.PlayerOptions[slot].Human then
             GUI.chatEdit:SetText(string.format("/whisper %s ", gameInfo.PlayerOptions[slot].PlayerName))
         end
+    elseif key == 'avoid_as_teammate' then
+        -- Placeholder for the host's local avoid-list behavior.
+        return
     -- Handle the various "Move to slot X" options.
     elseif string.sub(key, 1, 19) == 'move_player_to_slot' then
         HostUtils.SwapPlayers(slot, tonumber(string.sub(key, 20)))
