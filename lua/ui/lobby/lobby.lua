@@ -659,6 +659,7 @@ local function DoSlotBehavior(slot, key, name)
             if not table.find(avoidedPlayers, playerInfo.PlayerName) then
                 table.insert(avoidedPlayers, playerInfo.PlayerName)
                 Prefs.SetToCurrentProfile('avoidedplayers', avoidedPlayers)
+                SavePreferences()
             end
         end
         return
