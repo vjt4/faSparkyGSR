@@ -456,7 +456,17 @@ local function GetSlotMenuTables(stateKey, hostKey, slotNum)
         else
             if not (isPlayerReady and key == 'occupy') then
                 table.insert(keys, key)
-                table.insert(strings, slotMenuStrings[key])
+                if key == 'avoid_as_teammate' then
+                    local avoidedPlayers = Prefs.GetFromCurrentProfile('avoidedplayers')
+                    local playerName = gameInfo.PlayerOptions[slotNum].PlayerName
+                    if type(avoidedPlayers) == 'table' and table.find(avoidedPlayers, playerName) then
+                        table.insert(strings, "Allow as teammate")
+                    else
+                        table.insert(strings, slotMenuStrings[key])
+                    end
+                else
+                    table.insert(strings, slotMenuStrings[key])
+                end
                 -- Add a tooltip key here if we ever get any interesting options.
                 table.insert(tooltips, nil)
             end
@@ -656,11 +666,16 @@ local function DoSlotBehavior(slot, key, name)
                 avoidedPlayers = {}
             end
 
-            if not table.find(avoidedPlayers, playerInfo.PlayerName) then
+            local avoidedIndex = table.find(avoidedPlayers, playerInfo.PlayerName)
+            if avoidedIndex then
+                table.remove(avoidedPlayers, avoidedIndex)
+            else
                 table.insert(avoidedPlayers, playerInfo.PlayerName)
-                Prefs.SetToCurrentProfile('avoidedplayers', avoidedPlayers)
-                SavePreferences()
             end
+
+            Prefs.SetToCurrentProfile('avoidedplayers', avoidedPlayers)
+            SavePreferences()
+            SetSlotInfo(slot, playerInfo)
         end
         return
     -- Handle the various "Move to slot X" options.
