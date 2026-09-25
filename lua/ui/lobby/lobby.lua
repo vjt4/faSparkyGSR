@@ -316,7 +316,7 @@ local slotMenuStrings = {
     closed = "<LOC lobui_0221>Closed",
     occupy = "<LOC lobui_0222>Occupy",
     pm = "<LOC lobui_0223>Private Message",
-    avoid_as_teammate = "Avoid as teammate",
+    avoid_as_teammate = "Avoid as Teammate",
     remove_to_kik = "<LOC lobui_0428>Kick Player",
     remove_to_observer = "<LOC lobui_0429>Move Player to Observer",
     close_spawn_mex = "<LOC lobui_0431>Close - spawn mex",
@@ -460,7 +460,7 @@ local function GetSlotMenuTables(stateKey, hostKey, slotNum)
                     local avoidedPlayers = Prefs.GetFromCurrentProfile('avoidedplayers')
                     local playerName = gameInfo.PlayerOptions[slotNum].PlayerName
                     if type(avoidedPlayers) == 'table' and table.find(avoidedPlayers, playerName) then
-                        table.insert(strings, "Allow as teammate")
+                        table.insert(strings, "Allow as Teammate")
                     else
                         table.insert(strings, slotMenuStrings[key])
                     end

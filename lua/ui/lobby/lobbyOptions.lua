@@ -19,7 +19,7 @@
 ---@class GameOptions
 ---@field AutoTeams 'none' | 'manual' | 'tvsb' | 'lvsr' | 'pvsi'
 ---@field TeamLock 'locked' | 'unlocked'
----@field TeamSpawn 'fixed' | 'random' | 'balanced' | 'balanced_flex' | 'random_reveal' | 'balanced_reveal' | 'balanced_reveal_mirrored' | 'balanced_flex_reveal'
+---@field TeamSpawn 'fixed' | 'random' | 'balanced' | 'balanced_flex' | 'random_reveal' | 'balanced_reveal' | 'balanced_reveal_mirrored' | 'balanced_reveal_mirrored_avoid' | 'balanced_flex_reveal'
 ---@field TeamShareOverflow "enabled" | "disabled"
 ---
 ---@field AllowObservers boolean
@@ -116,6 +116,11 @@ teamOptions =
                 text = "<LOC lobui_0782>Optimal balance mirrored (Revealed)",
                 help = "<LOC lobui_0783>Teams will be optimally balanced with mirrored positions, labeled random start locations",
                 key = 'balanced_reveal_mirrored',
+            },
+            {
+                text = "Optimal Avoid (Mirrored)",
+                help = "Teams will be optimally balanced with mirrored positions, labeled random start locations",
+                key = 'balanced_reveal_mirrored_avoid',
             },
             {
                 text = "<LOC lobui_0780>Flexible balance (Revealed)",
