@@ -1,4 +1,5 @@
 string.match = string.match or string.find
+debug.allocatedsize = debug.allocatedsize or function() return 0 end
 
 require '../tests/testutils.lua'
 require '../ui/lobby/optimalavoid.lua'
@@ -118,6 +119,13 @@ local function MakePlayers(playerCount, hostIndex)
     return players
 end
 
+local function ExpectTeam(team, expected)
+    expect_equal(table.getn(team), table.getn(expected))
+    for index = 1, table.getn(expected) do
+        expect_equal(team[index], expected[index])
+    end
+end
+
 function test_enumerate_host_team_combination_counts()
     local cases = {
         { players = 2, teamSize = 1, combinations = 1 },
@@ -199,6 +207,102 @@ function test_enumerate_host_teams_validates_input()
     count, reason = EnumerateHostTeams(players, 2, function() end)
     expect_equal(count, nil)
     expect_equal(reason, 'multiple-hosts')
+end
+
+function test_build_shortlists_scores_and_buckets_candidates()
+    local players = {
+        { position = 1, rating = 100, isHost = true, isAvoided = false },
+        { position = 2, rating = 90, isHost = false, isAvoided = true },
+        { position = 3, rating = 60, isHost = false, isAvoided = false },
+        { position = 4, rating = 50, isHost = false, isAvoided = true },
+    }
+
+    local shortlists, combinationCount, reason = BuildShortlists(players, 2, 10)
+    expect_equal(combinationCount, 3)
+    expect_equal(reason, nil)
+
+    expect_equal(table.getn(shortlists[0]), 1)
+    ExpectTeam(shortlists[0][1].hostTeam, { 1, 3 })
+    expect_equal(shortlists[0][1].ratingDifference, 20)
+
+    expect_equal(table.getn(shortlists[1]), 2)
+    ExpectTeam(shortlists[1][1].hostTeam, { 1, 4 })
+    expect_equal(shortlists[1][1].ratingDifference, 0)
+    ExpectTeam(shortlists[1][2].hostTeam, { 1, 2 })
+    expect_equal(shortlists[1][2].ratingDifference, 80)
+end
+
+function test_build_shortlists_enforces_each_bucket_limit()
+    local players = {
+        { position = 1, rating = 100, isHost = true, isAvoided = false },
+        { position = 2, rating = 90, isHost = false, isAvoided = true },
+        { position = 3, rating = 60, isHost = false, isAvoided = false },
+        { position = 4, rating = 50, isHost = false, isAvoided = true },
+    }
+
+    local shortlists = BuildShortlists(players, 2, 1)
+    expect_equal(table.getn(shortlists[0]), 1)
+    expect_equal(table.getn(shortlists[1]), 1)
+    ExpectTeam(shortlists[1][1].hostTeam, { 1, 4 })
+end
+
+function test_build_shortlists_empty_and_complete_avoid_lists()
+    local players = MakePlayers(4, 1)
+    for index, player in pairs(players) do
+        player.rating = 100 - index
+    end
+
+    local shortlists = BuildShortlists(players, 2, 10)
+    expect_equal(table.getn(shortlists[0]), 3)
+    expect_equal(shortlists[1], nil)
+
+    for index = 2, 4 do
+        players[index].isAvoided = true
+    end
+
+    shortlists = BuildShortlists(players, 2, 10)
+    expect_equal(shortlists[0], nil)
+    expect_equal(table.getn(shortlists[1]), 3)
+end
+
+function test_build_shortlists_bounds_eight_v_eight_output()
+    local players = MakePlayers(16, 16)
+    for index, player in pairs(players) do
+        player.rating = 2000 - index * 50
+        player.isAvoided = math.mod(index, 2) == 0 and not player.isHost
+    end
+
+    local shortlists, combinationCount, reason = BuildShortlists(players, 8, 50)
+    expect_equal(combinationCount, 6435)
+    expect_equal(reason, nil)
+
+    local shortlistedCount = 0
+    for _, bucket in pairs(shortlists) do
+        assert(table.getn(bucket) <= 50)
+        shortlistedCount = shortlistedCount + table.getn(bucket)
+    end
+
+    assert(shortlistedCount <= 400)
+end
+
+function test_build_shortlists_uses_deterministic_tie_breaker()
+    local players = {
+        { position = 1, rating = 100, isHost = true, isAvoided = false },
+        { position = 2, rating = 100, isHost = false, isAvoided = false },
+        { position = 3, rating = 100, isHost = false, isAvoided = false },
+        { position = 4, rating = 100, isHost = false, isAvoided = false },
+    }
+
+    local shortlists = BuildShortlists(players, 2, 2)
+    ExpectTeam(shortlists[0][1].hostTeam, { 1, 2 })
+    ExpectTeam(shortlists[0][2].hostTeam, { 1, 3 })
+end
+
+function test_build_shortlists_validates_limit()
+    local shortlists, combinationCount, reason = BuildShortlists(MakePlayers(4, 1), 2, 0)
+    expect_equal(shortlists, nil)
+    expect_equal(combinationCount, nil)
+    expect_equal(reason, 'invalid-shortlist-limit')
 end
 
 auto_run_unit_tests()

@@ -205,3 +205,96 @@ function EnumerateHostTeams(players, teamSize, callback)
 
     return combinationCount, nil
 end
+
+---Compares candidates using only deterministic, inexpensive values.
+---@param candidateA table
+---@param candidateB table
+---@return boolean
+local function IsCheapCandidateBetter(candidateA, candidateB)
+    if candidateA.ratingDifference ~= candidateB.ratingDifference then
+        return candidateA.ratingDifference < candidateB.ratingDifference
+    end
+
+    for index = 1, table.getn(candidateA.hostTeam) do
+        local playerA = candidateA.hostTeam[index]
+        local playerB = candidateB.hostTeam[index]
+        if playerA ~= playerB then
+            return playerA < playerB
+        end
+    end
+
+    return false
+end
+
+---Inserts a candidate into its sorted, bounded violation bucket.
+---@param shortlists table<number, table[]>
+---@param candidate table
+---@param limitPerViolation number
+local function InsertShortlistCandidate(shortlists, candidate, limitPerViolation)
+    local bucket = shortlists[candidate.avoidViolations]
+    if not bucket then
+        bucket = {}
+        shortlists[candidate.avoidViolations] = bucket
+    end
+
+    local insertAt = table.getn(bucket) + 1
+    for index, existingCandidate in pairs(bucket) do
+        if IsCheapCandidateBetter(candidate, existingCandidate) then
+            insertAt = index
+            break
+        end
+    end
+
+    table.insert(bucket, insertAt, candidate)
+    if table.getn(bucket) > limitPerViolation then
+        table.remove(bucket)
+    end
+end
+
+---Enumerates and shortlists team compositions using inexpensive rating sums.
+---The returned table is indexed by the number of avoided players on the host's team.
+---@param players OptimalAvoidPlayer[]
+---@param teamSize number
+---@param limitPerViolation number
+---@return table<number, table[]>? shortlists
+---@return number? combinationCount
+---@return string? errorReason
+function BuildShortlists(players, teamSize, limitPerViolation)
+    if type(limitPerViolation) ~= 'number'
+        or limitPerViolation < 1
+        or limitPerViolation ~= math.floor(limitPerViolation)
+    then
+        return nil, nil, 'invalid-shortlist-limit'
+    end
+
+    local totalRating = 0
+    for _, player in pairs(players) do
+        totalRating = totalRating + player.rating
+    end
+
+    local shortlists = {}
+    local combinationCount, errorReason = EnumerateHostTeams(players, teamSize, function(hostTeam)
+        local hostTeamRating = 0
+        local avoidViolations = 0
+
+        for _, playerIndex in pairs(hostTeam) do
+            local player = players[playerIndex]
+            hostTeamRating = hostTeamRating + player.rating
+            if not player.isHost and player.isAvoided then
+                avoidViolations = avoidViolations + 1
+            end
+        end
+
+        InsertShortlistCandidate(shortlists, {
+            hostTeam = hostTeam,
+            avoidViolations = avoidViolations,
+            ratingDifference = math.abs(hostTeamRating - (totalRating - hostTeamRating)),
+        }, limitPerViolation)
+    end)
+
+    if not combinationCount then
+        return nil, nil, errorReason
+    end
+
+    return shortlists, combinationCount, nil
+end
