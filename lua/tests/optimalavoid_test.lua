@@ -305,4 +305,118 @@ function test_build_shortlists_validates_limit()
     expect_equal(reason, 'invalid-shortlist-limit')
 end
 
+local function QualityCandidate(hostTeam, violations, difference, quality)
+    return {
+        hostTeam = hostTeam,
+        avoidViolations = violations,
+        ratingDifference = difference,
+        testQuality = quality,
+    }
+end
+
+local function TestQuality(candidate)
+    return candidate.testQuality
+end
+
+function test_select_best_applies_absolute_five_point_floor()
+    local shortlists = {
+        [0] = {
+            QualityCandidate({ 1, 2 }, 0, 20, 86.99),
+            QualityCandidate({ 1, 3 }, 0, 30, 87),
+        },
+        [1] = {
+            QualityCandidate({ 1, 4 }, 1, 5, 91),
+        },
+    }
+
+    local best, minimumQuality, reason = SelectBest(shortlists, 92, TestQuality)
+    expect_equal(minimumQuality, 87)
+    expect_equal(reason, nil)
+    expect_equal(best.avoidViolations, 0)
+    expect_equal(best.quality, 87)
+    ExpectTeam(best.hostTeam, { 1, 3 })
+end
+
+function test_select_best_prefers_fewer_violations_before_quality()
+    local shortlists = {
+        [0] = {
+            QualityCandidate({ 1, 2 }, 0, 30, 88),
+        },
+        [1] = {
+            QualityCandidate({ 1, 3 }, 1, 20, 91),
+        },
+        [2] = {
+            QualityCandidate({ 1, 4 }, 2, 10, 94),
+        },
+    }
+
+    local best, minimumQuality = SelectBest(shortlists, 94, TestQuality)
+    expect_equal(minimumQuality, 89)
+    expect_equal(best.avoidViolations, 1)
+    expect_equal(best.quality, 91)
+end
+
+function test_select_best_uses_quality_then_cheap_tie_breakers()
+    local shortlists = {
+        [1] = {
+            QualityCandidate({ 1, 4 }, 1, 5, 90),
+            QualityCandidate({ 1, 3 }, 1, 10, 92),
+            QualityCandidate({ 1, 2 }, 1, 10, 92),
+        },
+    }
+
+    local best = SelectBest(shortlists, 92, TestQuality)
+    expect_equal(best.quality, 92)
+    expect_equal(best.ratingDifference, 10)
+    ExpectTeam(best.hostTeam, { 1, 2 })
+end
+
+function test_select_best_handles_all_avoided_and_low_baseline()
+    local shortlists = {
+        [3] = {
+            QualityCandidate({ 1, 2, 3, 4 }, 3, 15, 2),
+            QualityCandidate({ 1, 2, 3, 5 }, 3, 5, 3),
+        },
+    }
+
+    local best, minimumQuality = SelectBest(shortlists, 3, TestQuality)
+    expect_equal(minimumQuality, 0)
+    expect_equal(best.avoidViolations, 3)
+    expect_equal(best.quality, 3)
+end
+
+function test_select_best_reports_no_eligible_candidate()
+    local best, minimumQuality, reason = SelectBest({
+        [0] = {
+            QualityCandidate({ 1, 2 }, 0, 0, 86.99),
+        },
+    }, 92, TestQuality)
+
+    expect_equal(best, nil)
+    expect_equal(minimumQuality, 87)
+    expect_equal(reason, 'no-eligible-candidate')
+end
+
+function test_select_best_validates_input_and_quality()
+    local best, minimumQuality, reason = SelectBest(nil, 92, TestQuality)
+    expect_equal(best, nil)
+    expect_equal(minimumQuality, nil)
+    expect_equal(reason, 'invalid-shortlists')
+
+    best, minimumQuality, reason = SelectBest({}, nil, TestQuality)
+    expect_equal(reason, 'invalid-baseline-quality')
+
+    best, minimumQuality, reason = SelectBest({}, 92, nil)
+    expect_equal(reason, 'quality-function-required')
+
+    best, minimumQuality, reason = SelectBest({
+        [0] = {
+            QualityCandidate({ 1, 2 }, 0, 0, nil),
+        },
+    }, 92, TestQuality)
+    expect_equal(best, nil)
+    expect_equal(minimumQuality, 87)
+    expect_equal(reason, 'invalid-candidate-quality')
+end
+
 auto_run_unit_tests()

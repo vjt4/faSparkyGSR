@@ -298,3 +298,71 @@ function BuildShortlists(players, teamSize, limitPerViolation)
 
     return shortlists, combinationCount, nil
 end
+
+---Compares candidates after full quality scoring.
+---@param candidateA table
+---@param candidateB table
+---@return boolean
+local function IsQualityCandidateBetter(candidateA, candidateB)
+    if candidateA.avoidViolations ~= candidateB.avoidViolations then
+        return candidateA.avoidViolations < candidateB.avoidViolations
+    end
+
+    if candidateA.quality ~= candidateB.quality then
+        return candidateA.quality > candidateB.quality
+    end
+
+    return IsCheapCandidateBetter(candidateA, candidateB)
+end
+
+---Selects the best shortlisted candidate within five percentage points of baseline quality.
+---@param shortlists table<number, table[]>
+---@param baselineQuality number
+---@param qualityFunction fun(candidate: table): number
+---@return table? bestCandidate
+---@return number? minimumQuality
+---@return string? errorReason
+function SelectBest(shortlists, baselineQuality, qualityFunction)
+    if type(shortlists) ~= 'table' then
+        return nil, nil, 'invalid-shortlists'
+    end
+
+    if type(baselineQuality) ~= 'number' then
+        return nil, nil, 'invalid-baseline-quality'
+    end
+
+    if type(qualityFunction) ~= 'function' then
+        return nil, nil, 'quality-function-required'
+    end
+
+    local minimumQuality = math.max(0, baselineQuality - 5)
+    local bestCandidate
+
+    for _, bucket in pairs(shortlists) do
+        for _, candidate in pairs(bucket) do
+            local quality = qualityFunction(candidate)
+            if type(quality) ~= 'number' then
+                return nil, minimumQuality, 'invalid-candidate-quality'
+            end
+
+            if quality >= minimumQuality then
+                local scoredCandidate = {
+                    hostTeam = candidate.hostTeam,
+                    avoidViolations = candidate.avoidViolations,
+                    ratingDifference = candidate.ratingDifference,
+                    quality = quality,
+                }
+
+                if not bestCandidate or IsQualityCandidateBetter(scoredCandidate, bestCandidate) then
+                    bestCandidate = scoredCandidate
+                end
+            end
+        end
+    end
+
+    if not bestCandidate then
+        return nil, minimumQuality, 'no-eligible-candidate'
+    end
+
+    return bestCandidate, minimumQuality, nil
+end
