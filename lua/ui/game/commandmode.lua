@@ -20,7 +20,6 @@ local RadialDragger = import("/lua/ui/controls/draggers/radial.lua").RadialDragg
 -- upvalue globals for performance
 local IsKeyDown = IsKeyDown
 local GetUnitById = GetUnitById
-local GetRolloverInfo = GetRolloverInfo
 local GetActiveBuildTemplate = GetActiveBuildTemplate
 local GetMouseWorldPos = GetMouseWorldPos
 local IsDestroyed = IsDestroyed
@@ -321,14 +320,7 @@ function TryOverbuildClick(clearCommands)
         return false
     end
 
-    local rollover = GetRolloverInfo()
-    local target = rollover and rollover.userUnit
-    local anchor
-    if target and not IsDestroyed(target) then
-        anchor = target:GetInterpolatedPosition()
-    else
-        anchor = GetMouseWorldPos()
-    end
+    local anchor = GetMouseWorldPos()
 
     SimCallback({
         Func = 'OverbuildStructures',
