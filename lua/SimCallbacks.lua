@@ -299,9 +299,7 @@ Callbacks.OverbuildStructures = function(data, units)
         for _, target in plannedBuild.ReclaimTargets do
             IssueReclaim(plannedBuild.Builders, target)
         end
-    end
 
-    for _, plannedBuild in buildPlan do
         IssueBuildAllMobile(
             plannedBuild.Builders,
             plannedBuild.Position,
