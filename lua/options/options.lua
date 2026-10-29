@@ -654,6 +654,19 @@ options = {
             },
 
             {
+                title = "<LOC ECONOMIC_OVERBUILD>Economic Overbuild",
+                key = 'economic_overbuild',
+                type = 'toggle',
+                default = 'On',
+                custom = {
+                    states = {
+                        { text = "<LOC _Off>Off", key = 'Off' },
+                        { text = "<LOC _On>On", key = 'On' },
+                    },
+                },
+            },
+
+            {
                 title = "<LOC OPTIONS_0287>Factories Default to Repeat Build",
                 key = 'repeatbuild',
                 type = 'toggle',

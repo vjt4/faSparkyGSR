@@ -289,7 +289,12 @@ end
 ---@param clearCommands boolean
 ---@return boolean handled
 function TryOverbuildClick(clearCommands)
-    if commandMode ~= 'build' or not modeData or not modeData.name or modeData.cheat then
+    if Prefs.GetFieldFromCurrentProfile('options').economic_overbuild ~= 'On'
+        or commandMode ~= 'build'
+        or not modeData
+        or not modeData.name
+        or modeData.cheat
+    then
         return false
     end
 
