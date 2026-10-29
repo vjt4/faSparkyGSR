@@ -977,6 +977,10 @@ WorldView = ClassUI(moho.UIWorldView, Control, WorldViewShapeComponent, WorldVie
             self.PaintingCanvas:HandleWorldViewEvent(event)
         end
 
+        if event.Type == 'ButtonPress' and event.Modifiers.Left then
+            CommandMode.DetectEligibleOverbuildClick()
+        end
+
 
         if event.Type == 'MouseEnter' or event.Type == 'MouseMotion' then
             self.CursorOverWorld = true

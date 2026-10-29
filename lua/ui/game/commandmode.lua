@@ -20,6 +20,7 @@ local RadialDragger = import("/lua/ui/controls/draggers/radial.lua").RadialDragg
 -- upvalue globals for performance
 local IsKeyDown = IsKeyDown
 local GetUnitById = GetUnitById
+local GetRolloverInfo = GetRolloverInfo
 local IsDestroyed = IsDestroyed
 local SimCallback = SimCallback
 local EntityCategoryContains = EntityCategoryContains
@@ -138,6 +139,18 @@ local cachedModeData = false
 local issuedOneCommand = false
 local startBehaviors = {}
 local endBehaviors = {}
+
+local OverbuildEligibility = {
+    {
+        Target = categories.STRUCTURE * categories.ENERGYPRODUCTION * categories.TECH1 - categories.HYDROCARBON,
+        Builds = categories.MASSSTORAGE
+            + categories.STRUCTURE * categories.ENERGYPRODUCTION * (categories.TECH2 + categories.TECH3),
+    },
+    {
+        Target = categories.STRUCTURE * categories.ENERGYPRODUCTION * categories.TECH2,
+        Builds = categories.STRUCTURE * categories.ENERGYPRODUCTION * categories.TECH3,
+    },
+}
 
 --- Callback triggers when command mode starts
 ---@param behavior fun(mode?: CommandMode, data?: CommandModeData)
@@ -276,6 +289,34 @@ end
 ---@return boolean
 function InCommandMode()
     return commandMode ~= false
+end
+
+--- Detects build clicks on structures that are eligible to be reclaimed for the requested blueprint.
+--- This currently reports eligible clicks only; it does not replace or consume the engine command.
+function DetectEligibleOverbuildClick()
+    if commandMode ~= 'build' or not modeData or not modeData.name then
+        return
+    end
+
+    local rollover = GetRolloverInfo()
+    local target = rollover and rollover.userUnit
+    if not target or IsDestroyed(target) or target:GetArmy() ~= GetFocusArmy() then
+        return
+    end
+
+    for _, eligibility in OverbuildEligibility do
+        if EntityCategoryContains(eligibility.Target, target)
+            and EntityCategoryContains(eligibility.Builds, modeData.name)
+        then
+            print(string.format(
+                'Eligible overbuild: build %s over %s (%d)',
+                modeData.name,
+                target:GetBlueprint().BlueprintId,
+                target:GetEntityId()
+            ))
+            return
+        end
+    end
 end
 
 ---Helper function for a default feedback blip animation
