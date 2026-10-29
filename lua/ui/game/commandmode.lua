@@ -20,6 +20,7 @@ local RadialDragger = import("/lua/ui/controls/draggers/radial.lua").RadialDragg
 -- upvalue globals for performance
 local IsKeyDown = IsKeyDown
 local GetUnitById = GetUnitById
+local GetRolloverInfo = GetRolloverInfo
 local GetActiveBuildTemplate = GetActiveBuildTemplate
 local GetMouseWorldPos = GetMouseWorldPos
 local IsDestroyed = IsDestroyed
@@ -143,6 +144,7 @@ local endBehaviors = {}
 
 local OverbuildBuildings = categories.MASSSTORAGE
     + categories.STRUCTURE * categories.ENERGYPRODUCTION * (categories.TECH2 + categories.TECH3)
+local T3PowerGenerators = categories.STRUCTURE * categories.ENERGYPRODUCTION * categories.TECH3
 
 --- Callback triggers when command mode starts
 ---@param behavior fun(mode?: CommandMode, data?: CommandModeData)
@@ -294,7 +296,8 @@ function TryOverbuildClick(clearCommands)
     local buildings = {}
     local hasOverbuildBuilding = false
     local template = GetActiveBuildTemplate()
-    if template and not TableEmpty(template) then
+    local hasTemplate = template and not TableEmpty(template)
+    if hasTemplate then
         for index = 3, TableGetN(template) do
             local building = template[index]
             if building and building[1] then
@@ -320,7 +323,17 @@ function TryOverbuildClick(clearCommands)
         return false
     end
 
-    local anchor = GetMouseWorldPos()
+    local rollover = GetRolloverInfo()
+    local target = rollover and rollover.userUnit
+    local preserveCursorPosition = not hasTemplate
+        and EntityCategoryContains(T3PowerGenerators, modeData.name)
+
+    local anchor
+    if target and not IsDestroyed(target) and not preserveCursorPosition then
+        anchor = target:GetInterpolatedPosition()
+    else
+        anchor = GetMouseWorldPos()
+    end
 
     SimCallback({
         Func = 'OverbuildStructures',
