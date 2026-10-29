@@ -40,7 +40,8 @@ local GetCurrentCommandSource = GetCurrentCommandSource
 local GetSystemTimeSecondsOnlyForProfileUse = GetSystemTimeSecondsOnlyForProfileUse
 
 local IssueClearCommands = IssueClearCommands
-local IssueBuildMobile = IssueBuildMobile
+local IssueBuildAllMobile = IssueBuildAllMobile
+local IssueReclaim = IssueReclaim
 local IssueAggressiveMove = IssueAggressiveMove
 local IssueGuard = IssueGuard
 local IssueFerry = IssueFerry
@@ -121,9 +122,72 @@ local OverbuildEligibility = {
     },
 }
 
---- Reports eligible same-army structures underneath individual buildings in an overbuild template.
----@param data { Position: Vector, Buildings: { Blueprint: UnitId, OffsetX: number, OffsetZ: number }[] }
-Callbacks.DetectEligibleOverbuild = function(data)
+--- Waits for the structures underneath an overbuild template to be removed before
+--- issuing its construction orders. The engine rejects mobile build orders while
+--- their footprint is occupied, so these orders cannot safely be queued up front.
+---@param buildPlan { Blueprint: UnitId, Builders: Unit[], Position: Vector, ReclaimTargets: Unit[] }[]
+---@param reclaimTargets Unit[]
+local function CompleteOverbuild(buildPlan, reclaimTargets)
+    while true do
+        local hasTarget = false
+        for _, target in reclaimTargets do
+            if not target.Dead then
+                hasTarget = true
+                break
+            end
+        end
+
+        if not hasTarget then
+            break
+        end
+
+        local hasBuilder = false
+        for _, plannedBuild in buildPlan do
+            for _, builder in plannedBuild.Builders do
+                if not builder.Dead then
+                    hasBuilder = true
+                    break
+                end
+            end
+
+            if hasBuilder then
+                break
+            end
+        end
+
+        if not hasBuilder then
+            return
+        end
+
+        WaitTicks(1)
+    end
+
+    -- Allow the destroyed structures' footprints to be released before asking
+    -- the command system to validate the replacement construction orders.
+    WaitTicks(1)
+
+    for _, plannedBuild in buildPlan do
+        local builders = {}
+        for _, builder in plannedBuild.Builders do
+            if not builder.Dead then
+                TableInsert(builders, builder)
+            end
+        end
+
+        if not TableEmpty(builders) then
+            IssueBuildAllMobile(
+                builders,
+                plannedBuild.Position,
+                plannedBuild.Blueprint,
+                {}
+            )
+        end
+    end
+end
+
+--- Reproduces a build placement, reclaiming supported same-army structures before overlapping builds.
+---@param data { ClearCommands: boolean, Position: Vector, Buildings: { Blueprint: UnitId, OffsetX: number, OffsetZ: number }[] }
+Callbacks.OverbuildStructures = function(data, units)
     if not data or not data.Position or type(data.Buildings) ~= 'table' then
         return
     end
@@ -139,27 +203,39 @@ Callbacks.DetectEligibleOverbuild = function(data)
         return
     end
 
+    local assistingUnits = SecureUnits(units)
+    if TableEmpty(assistingUnits) then
+        return
+    end
+
+    local buildPlan = {}
     local reportedTargets = {}
-    for _, building in data.Buildings do
+    for index, building in data.Buildings do
+        if index > 100 then
+            break
+        end
+
         local blueprintId = building.Blueprint
         local blueprint = __blueprints[blueprintId]
         local offsetX = building.OffsetX
         local offsetZ = building.OffsetZ
         if not blueprint
+            or not EntityCategoryContains(categories.STRUCTURE, blueprintId)
             or type(offsetX) ~= 'number'
             or type(offsetZ) ~= 'number'
+            or math.abs(offsetX) > 256
+            or math.abs(offsetZ) > 256
         then
             continue
         end
 
-        local eligibleBuild = false
-        for _, candidate in OverbuildEligibility do
-            if EntityCategoryContains(candidate.Builds, blueprintId) then
-                eligibleBuild = true
-                break
+        local builders = {}
+        for _, unit in assistingUnits do
+            if unit:CanBuild(blueprintId) then
+                TableInsert(builders, unit)
             end
         end
-        if not eligibleBuild then
+        if TableEmpty(builders) then
             continue
         end
 
@@ -167,51 +243,77 @@ Callbacks.DetectEligibleOverbuild = function(data)
         local buildZ = anchorZ + offsetZ
         local buildHalfX = 0.5 * blueprint.Physics.SkirtSizeX
         local buildHalfZ = 0.5 * blueprint.Physics.SkirtSizeZ
-        local nearbyUnits = GetUnitsInRect(
-            buildX - buildHalfX - 5,
-            buildZ - buildHalfZ - 5,
-            buildX + buildHalfX + 5,
-            buildZ + buildHalfZ + 5
-        )
+        local reclaimTargets = {}
 
-        for _, target in nearbyUnits or {} do
-            if target.Army ~= sourceArmy
-                or target.Dead
-                or reportedTargets[target.EntityId]
-            then
-                continue
-            end
+        for _, eligibility in OverbuildEligibility do
+            if EntityCategoryContains(eligibility.Builds, blueprintId) then
+                local nearbyUnits = GetUnitsInRect(
+                    buildX - buildHalfX - 5,
+                    buildZ - buildHalfZ - 5,
+                    buildX + buildHalfX + 5,
+                    buildZ + buildHalfZ + 5
+                )
 
-            local eligibleTarget = false
-            for _, candidate in OverbuildEligibility do
-                if EntityCategoryContains(candidate.Builds, blueprintId)
-                    and EntityCategoryContains(candidate.Target, target)
-                then
-                    eligibleTarget = true
-                    break
+                for _, target in nearbyUnits or {} do
+                    if target.Army ~= sourceArmy
+                        or target.Dead
+                        or reportedTargets[target.EntityId]
+                        or not EntityCategoryContains(eligibility.Target, target)
+                    then
+                        continue
+                    end
+
+                    local targetPosition = target:GetPosition()
+                    local targetPhysics = target.Blueprint.Physics
+                    local overlapsX = math.abs(buildX - targetPosition[1])
+                        < buildHalfX + 0.5 * targetPhysics.SkirtSizeX
+                    local overlapsZ = math.abs(buildZ - targetPosition[3])
+                        < buildHalfZ + 0.5 * targetPhysics.SkirtSizeZ
+                    if overlapsX and overlapsZ then
+                        reportedTargets[target.EntityId] = true
+                        TableInsert(reclaimTargets, target)
+                        print(string.format(
+                            'Eligible overbuild: build %s over %s (%d)',
+                            blueprintId,
+                            target.Blueprint.BlueprintId,
+                            target.EntityId
+                        ))
+                    end
                 end
-            end
-            if not eligibleTarget then
-                continue
-            end
 
-            local targetPosition = target:GetPosition()
-            local targetPhysics = target.Blueprint.Physics
-            local overlapsX = math.abs(buildX - targetPosition[1])
-                < buildHalfX + 0.5 * targetPhysics.SkirtSizeX
-            local overlapsZ = math.abs(buildZ - targetPosition[3])
-                < buildHalfZ + 0.5 * targetPhysics.SkirtSizeZ
-            if overlapsX and overlapsZ then
-                reportedTargets[target.EntityId] = true
-                print(string.format(
-                    'Eligible overbuild: build %s over %s (%d)',
-                    blueprintId,
-                    target.Blueprint.BlueprintId,
-                    target.EntityId
-                ))
             end
         end
+
+        local buildPosition = Vector(buildX, GetSurfaceHeight(buildX, buildZ), buildZ)
+        if not TableEmpty(reclaimTargets)
+            or builders[1]:GetAIBrain():CanBuildStructureAt(blueprintId, buildPosition)
+        then
+            TableInsert(buildPlan, {
+                Blueprint = blueprintId,
+                Builders = builders,
+                Position = buildPosition,
+                ReclaimTargets = reclaimTargets,
+            })
+        end
     end
+
+    if TableEmpty(buildPlan) then
+        return
+    end
+
+    if data.ClearCommands == true then
+        IssueClearCommands(assistingUnits)
+    end
+
+    local reclaimTargets = {}
+    for _, plannedBuild in buildPlan do
+        for _, target in plannedBuild.ReclaimTargets do
+            IssueReclaim(plannedBuild.Builders, target)
+            TableInsert(reclaimTargets, target)
+        end
+    end
+
+    ForkThread(CompleteOverbuild, buildPlan, reclaimTargets)
 end
 
 --- Callback takes a boolean and toggles a stat on given units between 0 and 1

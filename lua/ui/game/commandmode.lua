@@ -142,6 +142,9 @@ local issuedOneCommand = false
 local startBehaviors = {}
 local endBehaviors = {}
 
+local OverbuildBuildings = categories.MASSSTORAGE
+    + categories.STRUCTURE * categories.ENERGYPRODUCTION * (categories.TECH2 + categories.TECH3)
+
 --- Callback triggers when command mode starts
 ---@param behavior fun(mode?: CommandMode, data?: CommandModeData)
 ---@param identifier? string
@@ -281,14 +284,16 @@ function InCommandMode()
     return commandMode ~= false
 end
 
---- Detects build clicks on structures that are eligible to be reclaimed for the requested blueprint.
---- This currently reports eligible clicks only; it does not replace or consume the engine command.
-function DetectEligibleOverbuildClick()
+--- Replaces placement of supported buildings with a validated sim-side overbuild command.
+---@param clearCommands boolean
+---@return boolean handled
+function TryOverbuildClick(clearCommands)
     if commandMode ~= 'build' or not modeData or not modeData.name then
-        return
+        return false
     end
 
     local buildings = {}
+    local hasOverbuildBuilding = false
     local template = GetActiveBuildTemplate()
     if template and not TableEmpty(template) then
         for index = 3, TableGetN(template) do
@@ -299,6 +304,8 @@ function DetectEligibleOverbuildClick()
                     OffsetX = building[3] or 0,
                     OffsetZ = building[4] or 0,
                 })
+                hasOverbuildBuilding = hasOverbuildBuilding
+                    or EntityCategoryContains(OverbuildBuildings, building[1])
             end
         end
     else
@@ -307,10 +314,11 @@ function DetectEligibleOverbuildClick()
             OffsetX = 0,
             OffsetZ = 0,
         })
+        hasOverbuildBuilding = EntityCategoryContains(OverbuildBuildings, modeData.name)
     end
 
-    if TableEmpty(buildings) then
-        return
+    if TableEmpty(buildings) or not hasOverbuildBuilding then
+        return false
     end
 
     local rollover = GetRolloverInfo()
@@ -323,12 +331,21 @@ function DetectEligibleOverbuildClick()
     end
 
     SimCallback({
-        Func = 'DetectEligibleOverbuild',
+        Func = 'OverbuildStructures',
         Args = {
+            ClearCommands = clearCommands,
             Position = anchor,
             Buildings = buildings,
         },
     }, true)
+
+    if clearCommands then
+        EndCommandMode(true)
+    else
+        issuedOneCommand = true
+    end
+
+    return true
 end
 
 ---Helper function for a default feedback blip animation

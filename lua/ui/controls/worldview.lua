@@ -978,7 +978,9 @@ WorldView = ClassUI(moho.UIWorldView, Control, WorldViewShapeComponent, WorldVie
         end
 
         if event.Type == 'ButtonPress' and event.Modifiers.Left then
-            CommandMode.DetectEligibleOverbuildClick()
+            if CommandMode.TryOverbuildClick(not event.Modifiers.Shift) then
+                return true
+            end
         end
 
 
