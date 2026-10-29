@@ -122,69 +122,6 @@ local OverbuildEligibility = {
     },
 }
 
---- Waits for the structures underneath an overbuild template to be removed before
---- issuing its construction orders. The engine rejects mobile build orders while
---- their footprint is occupied, so these orders cannot safely be queued up front.
----@param buildPlan { Blueprint: UnitId, Builders: Unit[], Position: Vector, ReclaimTargets: Unit[] }[]
----@param reclaimTargets Unit[]
-local function CompleteOverbuild(buildPlan, reclaimTargets)
-    while true do
-        local hasTarget = false
-        for _, target in reclaimTargets do
-            if not target.Dead then
-                hasTarget = true
-                break
-            end
-        end
-
-        if not hasTarget then
-            break
-        end
-
-        local hasBuilder = false
-        for _, plannedBuild in buildPlan do
-            for _, builder in plannedBuild.Builders do
-                if not builder.Dead then
-                    hasBuilder = true
-                    break
-                end
-            end
-
-            if hasBuilder then
-                break
-            end
-        end
-
-        if not hasBuilder then
-            return
-        end
-
-        WaitTicks(1)
-    end
-
-    -- Allow the destroyed structures' footprints to be released before asking
-    -- the command system to validate the replacement construction orders.
-    WaitTicks(1)
-
-    for _, plannedBuild in buildPlan do
-        local builders = {}
-        for _, builder in plannedBuild.Builders do
-            if not builder.Dead then
-                TableInsert(builders, builder)
-            end
-        end
-
-        if not TableEmpty(builders) then
-            IssueBuildAllMobile(
-                builders,
-                plannedBuild.Position,
-                plannedBuild.Blueprint,
-                {}
-            )
-        end
-    end
-end
-
 --- Reproduces a build placement, reclaiming supported same-army structures before overlapping builds.
 ---@param data { ClearCommands: boolean, Position: Vector, Buildings: { Blueprint: UnitId, OffsetX: number, OffsetZ: number }[] }
 Callbacks.OverbuildStructures = function(data, units)
@@ -305,15 +242,20 @@ Callbacks.OverbuildStructures = function(data, units)
         IssueClearCommands(assistingUnits)
     end
 
-    local reclaimTargets = {}
     for _, plannedBuild in buildPlan do
         for _, target in plannedBuild.ReclaimTargets do
             IssueReclaim(plannedBuild.Builders, target)
-            TableInsert(reclaimTargets, target)
         end
     end
 
-    ForkThread(CompleteOverbuild, buildPlan, reclaimTargets)
+    for _, plannedBuild in buildPlan do
+        IssueBuildAllMobile(
+            plannedBuild.Builders,
+            plannedBuild.Position,
+            plannedBuild.Blueprint,
+            {}
+        )
+    end
 end
 
 --- Callback takes a boolean and toggles a stat on given units between 0 and 1
