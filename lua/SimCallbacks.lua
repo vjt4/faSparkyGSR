@@ -109,6 +109,111 @@ end
 Callbacks.EmptyCallback = function(data, units)
 end
 
+local OverbuildEligibility = {
+    {
+        Target = categories.STRUCTURE * categories.ENERGYPRODUCTION * categories.TECH1 - categories.HYDROCARBON,
+        Builds = categories.MASSSTORAGE
+            + categories.STRUCTURE * categories.ENERGYPRODUCTION * (categories.TECH2 + categories.TECH3),
+    },
+    {
+        Target = categories.STRUCTURE * categories.ENERGYPRODUCTION * categories.TECH2,
+        Builds = categories.STRUCTURE * categories.ENERGYPRODUCTION * categories.TECH3,
+    },
+}
+
+--- Reports eligible same-army structures underneath individual buildings in an overbuild template.
+---@param data { Position: Vector, Buildings: { Blueprint: UnitId, OffsetX: number, OffsetZ: number }[] }
+Callbacks.DetectEligibleOverbuild = function(data)
+    if not data or not data.Position or type(data.Buildings) ~= 'table' then
+        return
+    end
+
+    local sourceArmy = GetCurrentCommandSourceArmy()
+    if not sourceArmy then
+        return
+    end
+
+    local anchorX = data.Position[1]
+    local anchorZ = data.Position[3]
+    if type(anchorX) ~= 'number' or type(anchorZ) ~= 'number' then
+        return
+    end
+
+    local reportedTargets = {}
+    for _, building in data.Buildings do
+        local blueprintId = building.Blueprint
+        local blueprint = __blueprints[blueprintId]
+        local offsetX = building.OffsetX
+        local offsetZ = building.OffsetZ
+        if not blueprint
+            or type(offsetX) ~= 'number'
+            or type(offsetZ) ~= 'number'
+        then
+            continue
+        end
+
+        local eligibleBuild = false
+        for _, candidate in OverbuildEligibility do
+            if EntityCategoryContains(candidate.Builds, blueprintId) then
+                eligibleBuild = true
+                break
+            end
+        end
+        if not eligibleBuild then
+            continue
+        end
+
+        local buildX = anchorX + offsetX
+        local buildZ = anchorZ + offsetZ
+        local buildHalfX = 0.5 * blueprint.Physics.SkirtSizeX
+        local buildHalfZ = 0.5 * blueprint.Physics.SkirtSizeZ
+        local nearbyUnits = GetUnitsInRect(
+            buildX - buildHalfX - 5,
+            buildZ - buildHalfZ - 5,
+            buildX + buildHalfX + 5,
+            buildZ + buildHalfZ + 5
+        )
+
+        for _, target in nearbyUnits or {} do
+            if target.Army ~= sourceArmy
+                or target.Dead
+                or reportedTargets[target.EntityId]
+            then
+                continue
+            end
+
+            local eligibleTarget = false
+            for _, candidate in OverbuildEligibility do
+                if EntityCategoryContains(candidate.Builds, blueprintId)
+                    and EntityCategoryContains(candidate.Target, target)
+                then
+                    eligibleTarget = true
+                    break
+                end
+            end
+            if not eligibleTarget then
+                continue
+            end
+
+            local targetPosition = target:GetPosition()
+            local targetPhysics = target.Blueprint.Physics
+            local overlapsX = math.abs(buildX - targetPosition[1])
+                < buildHalfX + 0.5 * targetPhysics.SkirtSizeX
+            local overlapsZ = math.abs(buildZ - targetPosition[3])
+                < buildHalfZ + 0.5 * targetPhysics.SkirtSizeZ
+            if overlapsX and overlapsZ then
+                reportedTargets[target.EntityId] = true
+                print(string.format(
+                    'Eligible overbuild: build %s over %s (%d)',
+                    blueprintId,
+                    target.Blueprint.BlueprintId,
+                    target.EntityId
+                ))
+            end
+        end
+    end
+end
+
 --- Callback takes a boolean and toggles a stat on given units between 0 and 1
 ---@param data table<string, boolean>
 Callbacks.SetStatByCallback = function(data, units)

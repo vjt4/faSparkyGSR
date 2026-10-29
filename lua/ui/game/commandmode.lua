@@ -21,6 +21,8 @@ local RadialDragger = import("/lua/ui/controls/draggers/radial.lua").RadialDragg
 local IsKeyDown = IsKeyDown
 local GetUnitById = GetUnitById
 local GetRolloverInfo = GetRolloverInfo
+local GetActiveBuildTemplate = GetActiveBuildTemplate
+local GetMouseWorldPos = GetMouseWorldPos
 local IsDestroyed = IsDestroyed
 local SimCallback = SimCallback
 local EntityCategoryContains = EntityCategoryContains
@@ -139,18 +141,6 @@ local cachedModeData = false
 local issuedOneCommand = false
 local startBehaviors = {}
 local endBehaviors = {}
-
-local OverbuildEligibility = {
-    {
-        Target = categories.STRUCTURE * categories.ENERGYPRODUCTION * categories.TECH1 - categories.HYDROCARBON,
-        Builds = categories.MASSSTORAGE
-            + categories.STRUCTURE * categories.ENERGYPRODUCTION * (categories.TECH2 + categories.TECH3),
-    },
-    {
-        Target = categories.STRUCTURE * categories.ENERGYPRODUCTION * categories.TECH2,
-        Builds = categories.STRUCTURE * categories.ENERGYPRODUCTION * categories.TECH3,
-    },
-}
 
 --- Callback triggers when command mode starts
 ---@param behavior fun(mode?: CommandMode, data?: CommandModeData)
@@ -298,25 +288,47 @@ function DetectEligibleOverbuildClick()
         return
     end
 
-    local rollover = GetRolloverInfo()
-    local target = rollover and rollover.userUnit
-    if not target or IsDestroyed(target) or target:GetArmy() ~= GetFocusArmy() then
+    local buildings = {}
+    local template = GetActiveBuildTemplate()
+    if template and not TableEmpty(template) then
+        for index = 3, TableGetN(template) do
+            local building = template[index]
+            if building and building[1] then
+                TableInsert(buildings, {
+                    Blueprint = building[1],
+                    OffsetX = building[3] or 0,
+                    OffsetZ = building[4] or 0,
+                })
+            end
+        end
+    else
+        TableInsert(buildings, {
+            Blueprint = modeData.name,
+            OffsetX = 0,
+            OffsetZ = 0,
+        })
+    end
+
+    if TableEmpty(buildings) then
         return
     end
 
-    for _, eligibility in OverbuildEligibility do
-        if EntityCategoryContains(eligibility.Target, target)
-            and EntityCategoryContains(eligibility.Builds, modeData.name)
-        then
-            print(string.format(
-                'Eligible overbuild: build %s over %s (%d)',
-                modeData.name,
-                target:GetBlueprint().BlueprintId,
-                target:GetEntityId()
-            ))
-            return
-        end
+    local rollover = GetRolloverInfo()
+    local target = rollover and rollover.userUnit
+    local anchor
+    if target and not IsDestroyed(target) then
+        anchor = target:GetInterpolatedPosition()
+    else
+        anchor = GetMouseWorldPos()
     end
+
+    SimCallback({
+        Func = 'DetectEligibleOverbuild',
+        Args = {
+            Position = anchor,
+            Buildings = buildings,
+        },
+    }, true)
 end
 
 ---Helper function for a default feedback blip animation
