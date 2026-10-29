@@ -26,6 +26,7 @@ local TableInsert = table.insert
 local TableEmpty = table.empty
 local TableRemove = table.remove
 local TableMerged = table.merged
+local TableConcat = table.concat
 
 -- upvalue scope for performance
 local type = type
@@ -122,6 +123,62 @@ local OverbuildEligibility = {
     },
 }
 
+---@param labels string[]
+---@param count number
+---@param singular string
+---@param plural string
+local function AddOverbuildCountLabel(labels, count, singular, plural)
+    if count > 0 then
+        TableInsert(labels, string.format('%d %s', count, count == 1 and singular or plural))
+    end
+end
+
+---@param buildPlan { Blueprint: UnitId, ReclaimTargets: Unit[] }[]
+local function PrintOverbuildSummary(buildPlan)
+    local massStorages = 0
+    local tech2PowerGenerators = 0
+    local tech3PowerGenerators = 0
+    local tech1Targets = 0
+    local tech2Targets = 0
+
+    for _, plannedBuild in buildPlan do
+        if not TableEmpty(plannedBuild.ReclaimTargets) then
+            if EntityCategoryContains(categories.MASSSTORAGE, plannedBuild.Blueprint) then
+                massStorages = massStorages + 1
+            elseif EntityCategoryContains(categories.ENERGYPRODUCTION * categories.TECH2, plannedBuild.Blueprint) then
+                tech2PowerGenerators = tech2PowerGenerators + 1
+            elseif EntityCategoryContains(categories.ENERGYPRODUCTION * categories.TECH3, plannedBuild.Blueprint) then
+                tech3PowerGenerators = tech3PowerGenerators + 1
+            end
+
+            for _, target in plannedBuild.ReclaimTargets do
+                if EntityCategoryContains(categories.TECH1, target) then
+                    tech1Targets = tech1Targets + 1
+                elseif EntityCategoryContains(categories.TECH2, target) then
+                    tech2Targets = tech2Targets + 1
+                end
+            end
+        end
+    end
+
+    local builds = {}
+    AddOverbuildCountLabel(builds, massStorages, 'Mass Storage', 'Mass Storages')
+    AddOverbuildCountLabel(builds, tech2PowerGenerators, 'T2 Pgen', 'T2 Pgens')
+    AddOverbuildCountLabel(builds, tech3PowerGenerators, 'T3 Pgen', 'T3 Pgens')
+
+    local targets = {}
+    AddOverbuildCountLabel(targets, tech1Targets, 'T1 Pgen', 'T1 Pgens')
+    AddOverbuildCountLabel(targets, tech2Targets, 'T2 Pgen', 'T2 Pgens')
+
+    if not TableEmpty(builds) and not TableEmpty(targets) then
+        print(string.format(
+            'Economic overbuild: %s overbuilding %s',
+            TableConcat(builds, ' and '),
+            TableConcat(targets, ' and ')
+        ))
+    end
+end
+
 --- Reproduces a build placement, reclaiming supported same-army structures before overlapping builds.
 ---@param data { ClearCommands: boolean, Position: Vector, Buildings: { Blueprint: UnitId, OffsetX: number, OffsetZ: number }[] }
 Callbacks.OverbuildStructures = function(data, units)
@@ -209,12 +266,6 @@ Callbacks.OverbuildStructures = function(data, units)
                     if overlapsX and overlapsZ then
                         reportedTargets[target.EntityId] = true
                         TableInsert(reclaimTargets, target)
-                        print(string.format(
-                            'Eligible overbuild: build %s over %s (%d)',
-                            blueprintId,
-                            target.Blueprint.BlueprintId,
-                            target.EntityId
-                        ))
                     end
                 end
 
@@ -237,6 +288,8 @@ Callbacks.OverbuildStructures = function(data, units)
     if TableEmpty(buildPlan) then
         return
     end
+
+    PrintOverbuildSummary(buildPlan)
 
     if data.ClearCommands == true then
         IssueClearCommands(assistingUnits)
