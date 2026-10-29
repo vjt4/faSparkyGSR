@@ -288,7 +288,7 @@ end
 ---@param clearCommands boolean
 ---@return boolean handled
 function TryOverbuildClick(clearCommands)
-    if commandMode ~= 'build' or not modeData or not modeData.name then
+    if commandMode ~= 'build' or not modeData or not modeData.name or modeData.cheat then
         return false
     end
 
