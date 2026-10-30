@@ -41,6 +41,7 @@ local GetCurrentCommandSource = GetCurrentCommandSource
 local GetSystemTimeSecondsOnlyForProfileUse = GetSystemTimeSecondsOnlyForProfileUse
 
 local IssueClearCommands = IssueClearCommands
+local IssueBuildMobile = IssueBuildMobile
 local IssueBuildAllMobile = IssueBuildAllMobile
 local IssueReclaim = IssueReclaim
 local IssueAggressiveMove = IssueAggressiveMove
