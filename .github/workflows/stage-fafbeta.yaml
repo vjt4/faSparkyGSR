@@ -37,7 +37,7 @@ jobs:
     concurrency:
       group: stage-fafbeta
     permissions:
-      contents: read
+      contents: write
       issues: write
       pull-requests: write
     env:
@@ -48,8 +48,6 @@ jobs:
       - name: Checkout FA repository
         uses: actions/checkout@v6
         with:
-          ssh-key: ${{ secrets.SSH_FAFOREVER_MACHINE_USER }}
-          repository: FAForever/fa
           ref: develop
           fetch-depth: 0
 
